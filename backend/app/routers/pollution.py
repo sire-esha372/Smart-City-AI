@@ -18,10 +18,14 @@ router = APIRouter(
 # LOAD MODEL
 # ==========================================
 
+BASE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+
 model_path = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "ml_models",
+    MODELS_DIR,
     "pollution_model.pkl"
 )
 
