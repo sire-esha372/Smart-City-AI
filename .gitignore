@@ -93,14 +93,14 @@ dist/
 # Ignore all pickle files
 *.pkl
 
-# Keep deployed power model
+# Keep deployed backend models
 !backend/app/ml_models/power_model.pkl
+!backend/app/ml_models/best_waste_model.keras
+!backend/app/ml_models/emergency.pt
 
-# Keep traffic prediction models
+# Keep deployed root models
 !models/traffic_model.pkl
+!models/pollution_model.pkl
 !models/holiday_encoder.pkl
 !models/weather_main_encoder.pkl
 !models/weather_description_encoder.pkl
-
-# Keep pollution prediction model
-!models/pollution_model.pkl
