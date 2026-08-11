@@ -17,32 +17,79 @@ from .routers.agents import router as agents_router
 from .routers.dashboard import router as dashboard_router
 from .routers.history import router as history_router
 
-Base.metadata.create_all(bind=engine)
+
+# ---------------------------------------------------------
+# Paths
+# ---------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+# ---------------------------------------------------------
+# FastAPI Application
+# ---------------------------------------------------------
 
 app = FastAPI(
     title="Smart City AI Platform",
     version="1.0.0"
 )
 
+
+# ---------------------------------------------------------
+# Database
+# ---------------------------------------------------------
+
+@app.on_event("startup")
+def startup():
+
+    Base.metadata.create_all(bind=engine)
+
+
+# ---------------------------------------------------------
+# Static Files
+# ---------------------------------------------------------
+
 app.mount(
     "/static",
-    StaticFiles(directory=str(BASE_DIR / "static")),
+    StaticFiles(
+        directory=str(BASE_DIR / "static")
+    ),
     name="static"
 )
 
+
+# ---------------------------------------------------------
+# Home
+# ---------------------------------------------------------
+
 @app.get("/")
 def home():
-    return {"message": "Welcome"}
+
+    return {
+        "message": "Welcome to Smart City AI Platform!"
+    }
+
+
+# ---------------------------------------------------------
+# Routers
+# ---------------------------------------------------------
 
 app.include_router(traffic_router)
+
 app.include_router(power_router)
+
 app.include_router(pollution_router)
+
 app.include_router(emergency_router)
+
 app.include_router(waste_router)
+
 app.include_router(citizen_router)
+
 app.include_router(rag_router)
+
 app.include_router(agents_router)
+
 app.include_router(dashboard_router)
+
 app.include_router(history_router)
