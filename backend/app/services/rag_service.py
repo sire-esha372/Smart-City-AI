@@ -5,6 +5,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
+
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -19,7 +20,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DOCUMENTS_PATH = BASE_DIR / "rag" / "documents"
 VECTORSTORE_PATH = BASE_DIR / "rag" / "vectorstore"
 
-
 print(f"Documents Path : {DOCUMENTS_PATH}")
 print(f"Vectorstore Path : {VECTORSTORE_PATH}")
 
@@ -28,9 +28,19 @@ print(f"Vectorstore Path : {VECTORSTORE_PATH}")
 # Embeddings
 # ---------------------------------------------------------------------
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+def get_embeddings():
+
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+
+        model_kwargs={
+            "device": "cpu"
+        },
+
+        encode_kwargs={
+            "normalize_embeddings": True
+        }
+    )
 
 
 # ---------------------------------------------------------------------
@@ -42,11 +52,15 @@ def build_vectorstore():
     print("Building FAISS vector database...")
 
     if not DOCUMENTS_PATH.exists():
-        raise Exception(f"Documents folder not found:\n{DOCUMENTS_PATH}")
+
+        raise Exception(
+            f"Documents folder not found:\n{DOCUMENTS_PATH}"
+        )
 
     pdf_files = list(DOCUMENTS_PATH.glob("*.pdf"))
 
     if len(pdf_files) == 0:
+
         raise Exception(
             f"No PDF files found inside:\n{DOCUMENTS_PATH}"
         )
@@ -68,14 +82,19 @@ def build_vectorstore():
 
     docs = splitter.split_documents(documents)
 
-    VECTORSTORE_PATH.mkdir(parents=True, exist_ok=True)
+    VECTORSTORE_PATH.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     vectorstore = FAISS.from_documents(
         docs,
-        embeddings
+        get_embeddings()
     )
 
-    vectorstore.save_local(str(VECTORSTORE_PATH))
+    vectorstore.save_local(
+        str(VECTORSTORE_PATH)
+    )
 
     print("FAISS database created successfully!")
 
@@ -98,7 +117,7 @@ def load_vectorstore():
 
     return FAISS.load_local(
         str(VECTORSTORE_PATH),
-        embeddings,
+        get_embeddings(),
         allow_dangerous_deserialization=True
     )
 
