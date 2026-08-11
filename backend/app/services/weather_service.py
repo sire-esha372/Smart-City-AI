@@ -1,7 +1,21 @@
 import os
+import requests
+from dotenv import load_dotenv
 
-API_KEY = os.getenv("OPENWEATHER_API_KEY")
+# Load environment variables from .env
+load_dotenv()
+
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+
+
 def get_weather(city: str):
+
+    # Check API key
+    if not OPENWEATHER_API_KEY:
+        raise Exception(
+            "OPENWEATHER_API_KEY is not configured. "
+            "Please add it to your .env file."
+        )
 
     url = "https://api.openweathermap.org/data/2.5/weather"
 

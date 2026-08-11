@@ -1,13 +1,23 @@
+import os
 import requests
+from dotenv import load_dotenv
 
 from .weather_service import get_weather
 
-import os
+# Load environment variables from .env
+load_dotenv()
 
 API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 
 def get_air_quality(city: str):
+
+    # Check API key
+    if not API_KEY:
+        raise Exception(
+            "OPENWEATHER_API_KEY is not configured. "
+            "Please add it to your .env file."
+        )
 
     # Get latitude & longitude
     weather = get_weather(city)
@@ -18,10 +28,10 @@ def get_air_quality(city: str):
     url = "https://api.openweathermap.org/data/2.5/air_pollution"
 
     params = {
-    "lat": lat,
-    "lon": lon,
-    "appid": API_KEY
-}
+        "lat": lat,
+        "lon": lon,
+        "appid": API_KEY
+    }
 
     response = requests.get(
         url,
@@ -52,7 +62,7 @@ def get_air_quality(city: str):
         "SO2": components.get("so2", 0),
         "O3": components.get("o3", 0),
 
-        # Estimated values for your existing model
+        # Estimated values for the existing pollution model
         "NOx": components.get("no", 0) + components.get("no2", 0),
         "Benzene": 0,
         "Toluene": 0
