@@ -1,17 +1,51 @@
+import os
 import numpy as np
 from PIL import Image
+
+from ..database.database import SessionLocal
+from ..database.crud import save_prediction
 
 
 # ==========================================
 # MODEL PATH
 # ==========================================
 
-import os
-
 MODEL_PATH = os.path.join(
     os.path.dirname(__file__),
+    "..",
+    "ml_models",
     "best_waste_model.keras"
 )
+
+
+# ==========================================
+# LAZY MODEL
+# ==========================================
+
+model = None
+
+
+def load_model():
+
+    global model
+
+    if model is None:
+
+        print("Loading Waste TensorFlow model...")
+
+        # Import TensorFlow only when Waste
+        # prediction is actually requested
+        import tensorflow as tf
+
+        model = tf.keras.models.load_model(
+            MODEL_PATH
+        )
+
+        print(
+            "Waste TensorFlow model loaded successfully."
+        )
+
+    return model
 
 
 # ==========================================
@@ -29,89 +63,108 @@ CLASS_NAMES = [
 
 
 # ==========================================
-# LAZY MODEL
-# ==========================================
-
-model = None
-
-
-def load_model():
-
-    global model
-
-    if model is None:
-
-        print("Loading Waste Classification model...")
-
-        # Import TensorFlow only when prediction is requested
-        import tensorflow as tf
-
-        model = tf.keras.models.load_model(
-            MODEL_PATH
-        )
-
-        print(
-            "Waste Classification model loaded successfully."
-        )
-
-    return model
-
-
-# ==========================================
 # WASTE PREDICTION
 # ==========================================
 
 def predict_waste(image_file):
 
+    # ==========================================
+    # LOAD MODEL ONLY WHEN NEEDED
+    # ==========================================
+
     waste_model = load_model()
 
-    # Import TensorFlow only when needed
+    # Import TensorFlow here as well so that
+    # TensorFlow is not loaded during startup
     import tensorflow as tf
 
-    # Open image
+    # ==========================================
+    # OPEN IMAGE
+    # ==========================================
+
     image = Image.open(
         image_file
     ).convert("RGB")
 
-    # Resize
+    # ==========================================
+    # RESIZE
+    # ==========================================
+
     image = image.resize(
         (224, 224)
     )
 
-    # Convert to numpy
+    # ==========================================
+    # CONVERT TO NUMPY
+    # ==========================================
+
     image = np.array(
         image
     )
 
-    # MobileNetV2 preprocessing
+    # ==========================================
+    # MOBILENETV2 PREPROCESSING
+    # ==========================================
+
     image = tf.keras.applications.mobilenet_v2.preprocess_input(
         image
     )
 
-    # Add batch dimension
+    # ==========================================
+    # ADD BATCH DIMENSION
+    # ==========================================
+
     image = np.expand_dims(
         image,
         axis=0
     )
 
-    # Prediction
-    predictions = waste_model.predict(
+    # ==========================================
+    # PREDICTION
+    # ==========================================
+
+    prediction = waste_model.predict(
         image,
         verbose=0
     )
 
-    predicted_index = np.argmax(
-        predictions
+    index = np.argmax(
+        prediction
     )
 
-    confidence = float(
-        np.max(predictions)
+    confidence = round(
+        float(
+            np.max(prediction) * 100
+        ),
+        2
     )
+
+    waste_type = CLASS_NAMES[index]
+
+    # ==========================================
+    # SAVE TO DATABASE
+    # ==========================================
+
+    db = SessionLocal()
+
+    try:
+
+        save_prediction(
+            db=db,
+            module="Waste",
+            status=waste_type,
+            value=f"{confidence}% Confidence"
+        )
+
+    finally:
+
+        db.close()
+
+    # ==========================================
+    # RESPONSE
+    # ==========================================
 
     return {
-        "prediction": CLASS_NAMES[predicted_index],
-        "confidence": round(
-            confidence * 100,
-            2
-        )
+        "prediction": waste_type,
+        "confidence": confidence
     }
