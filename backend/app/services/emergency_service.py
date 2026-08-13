@@ -1,6 +1,7 @@
 import os
 import uuid
 import time
+import gc
 
 from PIL import Image
 
@@ -42,7 +43,7 @@ os.makedirs(
 
 
 # =========================================================
-# LAZY MODEL
+# LAZY YOLO MODEL
 # =========================================================
 
 model = None
@@ -84,7 +85,7 @@ def detect_emergency(image_path: str):
     emergency_model = load_model()
 
     print(
-        "Running optimized Emergency YOLO..."
+        "Running lightweight Emergency YOLO..."
     )
 
     start_time = time.time()
@@ -96,20 +97,20 @@ def detect_emergency(image_path: str):
     results = emergency_model.predict(
         source=image_path,
 
-        # Smaller image = much faster CPU inference
-        imgsz=416,
+        # Smaller image for Render CPU/RAM
+        imgsz=320,
 
-        # Confidence threshold
-        conf=0.25,
+        # Slightly higher threshold
+        conf=0.30,
 
-        # Render has CPU only
+        # Render uses CPU
         device="cpu",
 
-        # Don't print YOLO progress
-        verbose=False,
+        # Limit detections
+        max_det=10,
 
-        # Limit number of detections
-        max_det=20
+        # No unnecessary console output
+        verbose=False
     )
 
     inference_time = (
@@ -216,20 +217,39 @@ def detect_emergency(image_path: str):
         output_filename
     )
 
-
     print(
         "Creating detection result image..."
     )
 
 
+    # =====================================================
+    # DRAW YOLO BOXES
+    # =====================================================
+
     plotted_image = result.plot()
 
-    Image.fromarray(
+
+    # =====================================================
+    # REDUCE OUTPUT IMAGE SIZE
+    # =====================================================
+
+    result_image = Image.fromarray(
         plotted_image
-    ).save(
+    )
+
+    result_image.thumbnail(
+        (1280, 1280)
+    )
+
+
+    # =====================================================
+    # SAVE COMPRESSED IMAGE
+    # =====================================================
+
+    result_image.save(
         output_path,
         format="JPEG",
-        quality=85,
+        quality=75,
         optimize=True
     )
 
@@ -238,6 +258,18 @@ def detect_emergency(image_path: str):
         f"Detection image saved: "
         f"{output_path}"
     )
+
+
+    # =====================================================
+    # CLEAN TEMPORARY OBJECTS
+    # =====================================================
+
+    del plotted_image
+    del result_image
+    del results
+    del result
+
+    gc.collect()
 
 
     # =====================================================
