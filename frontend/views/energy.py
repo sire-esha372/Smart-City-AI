@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 from datetime import date, datetime
 
+from config import BACKEND_URL
+
 
 def energy():
 
@@ -84,101 +86,205 @@ def energy():
 
         try:
 
-            response = requests.post(
-                "http://127.0.0.1:8000/predict/power",
-                json=payload,
-            )
+            # ==========================================
+            # CALL RENDER BACKEND
+            # ==========================================
 
-            if response.status_code != 200:
-                st.error(response.text)
-                return
+            with st.spinner(
+                "⚡ Predicting power consumption... Please wait."
+            ):
 
-            result = response.json()
-
-            if result["success"]:
-
-                st.success("✅ Prediction Completed Successfully")
-
-                st.divider()
-
-                # ==========================================
-                # RESULTS
-                # ==========================================
-
-                st.markdown(
-                    "<h2 style='color:white;'>⚡ Power Prediction</h2>",
-                    unsafe_allow_html=True,
+                response = requests.post(
+                    f"{BACKEND_URL}/predict/power",
+                    json=payload,
+                    timeout=120,
                 )
 
-                col1, col2 = st.columns(2)
+            # ==========================================
+            # BACKEND STATUS
+            # ==========================================
 
-                with col1:
+            if response.status_code != 200:
 
-                    power = round(
-                        result["prediction"]["power_consumption"]
-                    )
+                st.error(
+                    f"❌ Backend Error {response.status_code}"
+                )
 
-                    st.metric(
-                        "Estimated Power Consumption",
-                        f"{power} MW",
-                    )
+                st.code(response.text)
 
-                with col2:
+                return
 
-                    level = result["prediction"]["level"]
+            # ==========================================
+            # JSON RESPONSE
+            # ==========================================
 
-                    # ==========================================
-                    # UPDATE DASHBOARD
-                    # ==========================================
+            try:
 
-                    st.session_state.energy_status = level
-                    st.session_state.energy_value = f"{power} MW"
+                result = response.json()
 
-                    if level == "Low":
-                        st.success("🟢 Low Demand")
+            except ValueError:
 
-                    elif level == "Medium":
-                        st.warning("🟠 Medium Demand")
+                st.error(
+                    "❌ Backend returned an invalid response."
+                )
 
-                    else:
-                        st.error("🔴 High Demand")
+                st.code(response.text)
 
-                st.divider()
+                return
+
+            # ==========================================
+            # SUCCESS CHECK
+            # ==========================================
+
+            if not result.get("success", False):
+
+                st.error("❌ Power prediction failed.")
+
+                st.json(result)
+
+                return
+
+            # ==========================================
+            # SUCCESS
+            # ==========================================
+
+            st.success(
+                "✅ Prediction Completed Successfully"
+            )
+
+            st.divider()
+
+            # ==========================================
+            # RESULTS
+            # ==========================================
+
+            st.markdown(
+                "<h2 style='color:white;'>⚡ Power Prediction</h2>",
+                unsafe_allow_html=True,
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                power = round(
+                    result["prediction"]["power_consumption"]
+                )
+
+                st.metric(
+                    "Estimated Power Consumption",
+                    f"{power} MW",
+                )
+
+            with col2:
+
+                level = result["prediction"]["level"]
 
                 # ==========================================
-                # AI RECOMMENDATION
+                # UPDATE DASHBOARD
                 # ==========================================
+
+                st.session_state.energy_status = level
+
+                st.session_state.energy_value = (
+                    f"{power} MW"
+                )
 
                 if level == "Low":
 
-                    recommendation = """
+                    st.success(
+                        "🟢 Low Demand"
+                    )
+
+                elif level == "Medium":
+
+                    st.warning(
+                        "🟠 Medium Demand"
+                    )
+
+                else:
+
+                    st.error(
+                        "🔴 High Demand"
+                    )
+
+            st.divider()
+
+            # ==========================================
+            # AI RECOMMENDATION
+            # ==========================================
+
+            if level == "Low":
+
+                recommendation = """
 ✅ Electricity demand is expected to remain low.
 
 No special grid management actions are required.
 """
 
-                elif level == "Medium":
+            elif level == "Medium":
 
-                    recommendation = """
+                recommendation = """
 ⚠ Moderate electricity demand expected.
 
 Monitor the power distribution network and prepare for increasing load.
 """
 
-                else:
+            else:
 
-                    recommendation = """
+                recommendation = """
 🚨 High electricity demand predicted.
 
 Consider load balancing, backup generation, and peak-hour monitoring.
 """
 
-                st.info(recommendation)
+            st.info(recommendation)
 
-            else:
+        # ==========================================
+        # TIMEOUT
+        # ==========================================
 
-                st.error("Prediction Failed")
+        except requests.exceptions.Timeout:
+
+            st.error(
+                "⏱️ The backend took too long to respond."
+            )
+
+            st.info(
+                "The Render backend may be waking up. "
+                "Please try again."
+            )
+
+        # ==========================================
+        # CONNECTION ERROR
+        # ==========================================
+
+        except requests.exceptions.ConnectionError:
+
+            st.error(
+                "🔌 Could not connect to the backend."
+            )
+
+            st.info(
+                f"Backend URL: {BACKEND_URL}"
+            )
+
+        # ==========================================
+        # REQUEST ERROR
+        # ==========================================
+
+        except requests.exceptions.RequestException as e:
+
+            st.error(
+                f"❌ Backend request failed: {e}"
+            )
+
+        # ==========================================
+        # UNEXPECTED ERROR
+        # ==========================================
 
         except Exception as e:
 
-            st.error(f"Error: {e}")
+            st.error(
+                f"❌ Unexpected error: {e}"
+            )

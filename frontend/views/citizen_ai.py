@@ -1,7 +1,11 @@
 import streamlit as st
 import requests
 
-API_URL = "http://127.0.0.1:8000/citizen/summarize"
+from config import BACKEND_URL
+
+
+API_URL = f"{BACKEND_URL}/citizen/summarize"
+
 
 def citizen_ai():
 
@@ -15,44 +19,160 @@ def citizen_ai():
         key="complaint_box"
     )
 
-    if st.button("🔍 Analyze Complaint", use_container_width=True):
+    if st.button(
+        "🔍 Analyze Complaint",
+        use_container_width=True
+    ):
 
         if not complaint.strip():
-            st.warning("Please enter a complaint.")
+
+            st.warning(
+                "Please enter a complaint."
+            )
+
             return
 
         try:
 
-            with st.spinner("Analyzing complaint..."):
+            # ==========================================
+            # CALL RENDER BACKEND
+            # ==========================================
+
+            with st.spinner(
+                "📝 Analyzing complaint... Please wait."
+            ):
 
                 response = requests.post(
                     API_URL,
-                    json={"complaint": complaint},
-                    timeout=30
+                    json={
+                        "complaint": complaint
+                    },
+                    timeout=120
                 )
 
-            response.raise_for_status()
+            # ==========================================
+            # BACKEND STATUS
+            # ==========================================
 
-            result = response.json()
+            if response.status_code != 200:
 
-            st.success("Complaint analyzed successfully!")
+                st.error(
+                    f"❌ Backend Error {response.status_code}"
+                )
+
+                st.code(
+                    response.text
+                )
+
+                return
+
+            # ==========================================
+            # JSON RESPONSE
+            # ==========================================
+
+            try:
+
+                result = response.json()
+
+            except ValueError:
+
+                st.error(
+                    "❌ Backend returned an invalid response."
+                )
+
+                st.code(
+                    response.text
+                )
+
+                return
+
+            # ==========================================
+            # SUCCESS
+            # ==========================================
+
+            st.success(
+                "✅ Complaint analyzed successfully!"
+            )
 
             c1, c2 = st.columns(2)
 
             with c1:
-                st.metric("📂 Category", result["category"])
-                st.metric("🏢 Department", result["department"])
+
+                st.metric(
+                    "📂 Category",
+                    result["category"]
+                )
+
+                st.metric(
+                    "🏢 Department",
+                    result["department"]
+                )
 
             with c2:
-                st.metric("😊 Sentiment", result["sentiment"])
-                st.metric("⚠️ Priority", result["priority"])
 
-            st.markdown("### 📄 Complaint Summary")
+                st.metric(
+                    "😊 Sentiment",
+                    result["sentiment"]
+                )
 
-            st.success(result["summary"])
+                st.metric(
+                    "⚠️ Priority",
+                    result["priority"]
+                )
+
+            st.markdown(
+                "### 📄 Complaint Summary"
+            )
+
+            st.success(
+                result["summary"]
+            )
+
+        # ==========================================
+        # TIMEOUT
+        # ==========================================
+
+        except requests.exceptions.Timeout:
+
+            st.error(
+                "⏱️ The complaint analysis took too long."
+            )
+
+            st.info(
+                "The Render backend may be waking up. "
+                "Please try again."
+            )
+
+        # ==========================================
+        # CONNECTION ERROR
+        # ==========================================
 
         except requests.exceptions.ConnectionError:
-            st.error("Unable to connect to the FastAPI server.")
+
+            st.error(
+                "🔌 Unable to connect to the backend."
+            )
+
+            st.info(
+                f"Backend URL: {BACKEND_URL}"
+            )
+
+        # ==========================================
+        # REQUEST ERROR
+        # ==========================================
+
+        except requests.exceptions.RequestException as e:
+
+            st.error(
+                f"❌ Backend request failed: {e}"
+            )
+
+        # ==========================================
+        # OTHER ERROR
+        # ==========================================
 
         except Exception as e:
-            st.error(f"Error: {e}")
+
+            st.error(
+                f"❌ Unexpected error: {e}"
+            )

@@ -1,143 +1,437 @@
 import streamlit as st
 import requests
+
 from PIL import Image
 from io import BytesIO
 
-API_URL = "http://127.0.0.1:8000/emergency/predict"
+from config import BACKEND_URL
 
+
+# =========================================================
+# API URL
+# =========================================================
+
+API_URL = (
+    f"{BACKEND_URL.rstrip('/')}/emergency/predict"
+)
+
+st.info(f"Emergency API: {API_URL}")
+
+
+# =========================================================
+# EMERGENCY PAGE
+# =========================================================
 
 def emergency():
 
     st.title("🚨 Emergency Detection")
+
     st.markdown(
         "Detect **Fire** and **Smoke** using the YOLOv8 AI model."
     )
 
     st.divider()
 
-    st.subheader("📤 Upload Image")
-    st.caption("Supported formats: JPG, JPEG, PNG (Maximum 200 MB)")
+    # =====================================================
+    # UPLOAD
+    # =====================================================
 
-    uploaded_file = st.file_uploader(
-        "",
-        type=["jpg", "jpeg", "png"],
-        label_visibility="collapsed",
+    st.subheader("📤 Upload Image")
+
+    st.caption(
+        "Supported formats: JPG, JPEG, PNG"
     )
 
-    if uploaded_file is not None:
+    uploaded_file = st.file_uploader(
+        "Upload emergency image",
+        type=["jpg", "jpeg", "png"],
+        label_visibility="collapsed"
+    )
 
-        if st.button("🔥 Detect Emergency", use_container_width=True):
+    if uploaded_file is None:
 
-            files = {
-                "file": (
-                    uploaded_file.name,
-                    uploaded_file.getvalue(),
-                    uploaded_file.type,
+        st.info(
+            "📷 Upload an image to detect fire or smoke."
+        )
+
+        return
+
+    # =====================================================
+    # ORIGINAL IMAGE
+    # =====================================================
+
+    st.subheader("📷 Original Image")
+
+    st.image(
+        uploaded_file,
+        use_container_width=True
+    )
+
+    st.divider()
+
+    # =====================================================
+    # DETECT BUTTON
+    # =====================================================
+
+    if st.button(
+        "🔥 Detect Emergency",
+        use_container_width=True
+    ):
+
+        files = {
+            "file": (
+                uploaded_file.name,
+                uploaded_file.getvalue(),
+                uploaded_file.type
+            )
+        }
+
+        # =================================================
+        # CALL BACKEND
+        # =================================================
+
+        try:
+
+            with st.spinner(
+                "🚨 Running AI Detection... "
+                "The first request may take a little longer."
+            ):
+
+                response = requests.post(
+                    API_URL,
+                    files=files,
+                    timeout=300
                 )
-            }
 
-            with st.spinner("Running AI Detection..."):
-                response = requests.post(API_URL, files=files)
+            # =================================================
+            # BACKEND ERROR
+            # =================================================
 
-            if response.status_code == 200:
+            if response.status_code != 200:
+
+                st.error(
+                    f"❌ Backend Error: "
+                    f"{response.status_code}"
+                )
+
+                st.code(
+                    response.text
+                )
+
+                return
+
+            # =================================================
+            # JSON RESPONSE
+            # =================================================
+
+            try:
 
                 data = response.json()
 
-                st.success("Detection Completed Successfully!")
+            except ValueError:
 
-                # =====================================
-                # Images
-                # =====================================
+                st.error(
+                    "❌ Backend returned an invalid response."
+                )
 
-                col1, col2 = st.columns(2)
+                st.code(
+                    response.text
+                )
 
-                with col1:
-                    st.subheader("📷 Original Image")
-                    st.image(uploaded_file, use_container_width=True)
+                return
 
-                with col2:
-                    st.subheader("🎯 Detection Result")
+            # =================================================
+            # SUCCESS
+            # =================================================
 
-                    try:
-                        image_response = requests.get(data["image_url"])
+            st.success(
+                "✅ Emergency Detection Completed!"
+            )
 
-                        if image_response.status_code == 200:
+            # =================================================
+            # GET DETECTIONS
+            # =================================================
 
-                            image = Image.open(
-                                BytesIO(image_response.content)
-                            )
+            detections = data.get(
+                "detections",
+                []
+            )
 
-                            st.image(
-                                image,
-                                use_container_width=True
-                            )
+            # =================================================
+            # RESULT IMAGE URL
+            # =================================================
 
-                        else:
-                            st.error("Unable to load detection image.")
+            image_url = data.get(
+                "image_url"
+            )
 
-                    except Exception as e:
-                        st.error(f"Image Error: {e}")
+            # =================================================
+            # FIX LOCALHOST URL
+            # =================================================
+
+            if image_url:
+
+                image_url = image_url.replace(
+                    "http://127.0.0.1:8000",
+                    BACKEND_URL.rstrip("/")
+                )
+
+                image_url = image_url.replace(
+                    "http://localhost:8000",
+                    BACKEND_URL.rstrip("/")
+                )
+
+            # =================================================
+            # DETECTION RESULT IMAGE
+            # =================================================
+
+            if image_url:
 
                 st.divider()
 
-                # =====================================
-                # Detection Summary
-                # =====================================
+                st.subheader(
+                    "🎯 Detection Result"
+                )
 
-                st.subheader("📊 Detection Summary")
+                try:
 
-                if len(data["detections"]) == 0:
+                    with st.spinner(
+                        "Loading detection result..."
+                    ):
 
-                    # ----------------------------
-                    # UPDATE DASHBOARD
-                    # ----------------------------
-
-                    st.session_state.alert_status = "0"
-                    st.session_state.alert_value = "No Alerts"
-
-                    st.success("🟢 No Fire or Smoke Detected")
-
-                else:
-
-                    first = data["detections"][0]
-
-                    # ----------------------------
-                    # UPDATE DASHBOARD
-                    # ----------------------------
-
-                    st.session_state.alert_status = str(len(data["detections"]))
-                    st.session_state.alert_value = first["class"].title()
-
-                    c1, c2, c3 = st.columns(3)
-
-                    with c1:
-                        st.metric(
-                            "Detected Object",
-                            first["class"].title(),
+                        image_response = requests.get(
+                            image_url,
+                            timeout=60
                         )
 
-                    with c2:
-                        st.metric(
-                            "Confidence",
-                            f"{first['confidence']*100:.2f}%"
+                    # -----------------------------------------
+                    # IMAGE SUCCESS
+                    # -----------------------------------------
+
+                    if image_response.status_code == 200:
+
+                        result_image = Image.open(
+                            BytesIO(
+                                image_response.content
+                            )
                         )
 
-                    with c3:
-                        st.metric(
-                            "Total Detections",
-                            len(data["detections"])
+                        st.image(
+                            result_image,
+                            caption="YOLO Detection Result",
+                            use_container_width=True
                         )
 
-                    st.error("🚨 Emergency Detected")
+                    # -----------------------------------------
+                    # IMAGE ERROR
+                    # -----------------------------------------
 
-                    st.markdown("### Detected Objects")
+                    else:
 
-                    for item in data["detections"]:
-
-                        st.write(
-                            f"🔥 **{item['class'].title()}** — {item['confidence']*100:.2f}%"
+                        st.warning(
+                            "⚠️ Detection completed, "
+                            "but the detection image could not be loaded."
                         )
+
+                        st.caption(
+                            f"Image server returned: "
+                            f"{image_response.status_code}"
+                        )
+
+                        st.code(
+                            image_url
+                        )
+
+                except requests.exceptions.Timeout:
+
+                    st.warning(
+                        "⏱️ Detection completed, "
+                        "but the result image took too long to load."
+                    )
+
+                except Exception as e:
+
+                    st.warning(
+                        "⚠️ Detection completed, "
+                        "but the result image could not be displayed."
+                    )
+
+                    st.code(
+                        str(e)
+                    )
 
             else:
 
-                st.error("Unable to connect to the FastAPI server.")
+                st.warning(
+                    "⚠️ Backend did not return a detection image."
+                )
+
+            # =================================================
+            # DETECTION SUMMARY
+            # =================================================
+
+            st.divider()
+
+            st.subheader(
+                "📊 Detection Summary"
+            )
+
+            # =================================================
+            # NO DETECTION
+            # =================================================
+
+            if len(detections) == 0:
+
+                st.session_state.alert_status = "0"
+
+                st.session_state.alert_value = (
+                    "No Alerts"
+                )
+
+                st.success(
+                    "🟢 No Fire or Smoke Detected"
+                )
+
+            # =================================================
+            # DETECTION FOUND
+            # =================================================
+
+            else:
+
+                first = detections[0]
+
+                # ---------------------------------------------
+                # DASHBOARD STATE
+                # ---------------------------------------------
+
+                st.session_state.alert_status = (
+                    str(len(detections))
+                )
+
+                st.session_state.alert_value = (
+                    first["class"].title()
+                )
+
+                # ---------------------------------------------
+                # METRICS
+                # ---------------------------------------------
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+
+                    st.metric(
+                        "Detected Object",
+                        first["class"].title()
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Confidence",
+                        f"{first['confidence'] * 100:.2f}%"
+                    )
+
+                with col3:
+
+                    st.metric(
+                        "Total Detections",
+                        len(detections)
+                    )
+
+                # ---------------------------------------------
+                # ALERT
+                # ---------------------------------------------
+
+                st.error(
+                    "🚨 Emergency Detected"
+                )
+
+                # ---------------------------------------------
+                # OBJECT LIST
+                # ---------------------------------------------
+
+                st.markdown(
+                    "### 🔥 Detected Objects"
+                )
+
+                for item in detections:
+
+                    class_name = item.get(
+                        "class",
+                        "Unknown"
+                    )
+
+                    confidence = float(
+                        item.get(
+                            "confidence",
+                            0
+                        )
+                    )
+
+                    st.write(
+                        f"🔥 **{class_name.title()}** "
+                        f"— "
+                        f"{confidence * 100:.2f}%"
+                    )
+
+        # =====================================================
+        # TIMEOUT
+        # =====================================================
+
+        except requests.exceptions.Timeout:
+
+            st.error(
+                "⏱️ Emergency detection timed out."
+            )
+
+            st.info(
+                "The Render backend may be loading the "
+                "YOLO model. Please try again."
+            )
+
+        # =====================================================
+        # CONNECTION ERROR
+        # =====================================================
+
+        except requests.exceptions.ConnectionError as e:
+
+            st.error(
+                "🔌 Could not connect to the backend."
+            )
+
+            st.info(
+                f"Backend URL: {BACKEND_URL}"
+            )
+
+            st.code(
+                str(e)
+            )
+
+        # =====================================================
+        # REQUEST ERROR
+        # =====================================================
+
+        except requests.exceptions.RequestException as e:
+
+            st.error(
+                "❌ Emergency request failed."
+            )
+
+            st.code(
+                str(e)
+            )
+
+        # =====================================================
+        # UNEXPECTED ERROR
+        # =====================================================
+
+        except Exception as e:
+
+            st.error(
+                "❌ Unexpected error."
+            )
+
+            st.code(
+                str(e)
+            )

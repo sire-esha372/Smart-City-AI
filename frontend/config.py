@@ -1,0 +1,1 @@
+BACKEND_URL = "https://smart-city-ai-1la1.onrender.com"

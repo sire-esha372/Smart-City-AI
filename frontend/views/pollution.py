@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 
+from config import BACKEND_URL
+
 
 def pollution():
 
@@ -54,28 +56,91 @@ def pollution():
         use_container_width=True
     ):
 
+        if not city.strip():
+
+            st.error(
+                "❌ Please enter a city."
+            )
+
+            return
+
         payload = {
-            "city": city
+            "city": city.strip()
         }
 
         try:
 
-            response = requests.post(
-                "http://127.0.0.1:8000/predict/pollution/",
-                json=payload
-            )
+            # ==========================================
+            # CALL RENDER BACKEND
+            # ==========================================
+
+            with st.spinner(
+                "🌍 Fetching live air quality and predicting AQI..."
+            ):
+
+                response = requests.post(
+                    f"{BACKEND_URL}/predict/pollution/",
+                    json=payload,
+                    timeout=120
+                )
+
+            # ==========================================
+            # BACKEND STATUS
+            # ==========================================
 
             if response.status_code != 200:
-                st.error(response.text)
+
+                st.error(
+                    f"❌ Backend Error {response.status_code}"
+                )
+
+                st.code(
+                    response.text
+                )
+
                 return
 
-            result = response.json()
+            # ==========================================
+            # JSON RESPONSE
+            # ==========================================
 
-            if not result["success"]:
-                st.error("Prediction Failed")
+            try:
+
+                result = response.json()
+
+            except ValueError:
+
+                st.error(
+                    "❌ Backend returned an invalid response."
+                )
+
+                st.code(
+                    response.text
+                )
+
                 return
 
-            st.success("✅ Prediction Completed")
+            # ==========================================
+            # SUCCESS CHECK
+            # ==========================================
+
+            if not result.get("success", False):
+
+                st.error(
+                    "❌ Pollution prediction failed."
+                )
+
+                st.json(result)
+
+                return
+
+            # ==========================================
+            # SUCCESS
+            # ==========================================
+
+            st.success(
+                "✅ Prediction Completed"
+            )
 
             st.divider()
 
@@ -83,17 +148,21 @@ def pollution():
             # LOCATION
             # ==========================================
 
-            st.markdown("## 📍 Location")
+            st.markdown(
+                "## 📍 Location"
+            )
 
             col1, col2 = st.columns(2)
 
             with col1:
+
                 st.metric(
                     "City",
                     result["location"]["city"]
                 )
 
             with col2:
+
                 st.metric(
                     "Country",
                     result["location"]["country"]
@@ -105,23 +174,28 @@ def pollution():
             # AIR QUALITY
             # ==========================================
 
-            st.markdown("## 🌫 Current Air Quality")
+            st.markdown(
+                "## 🌫 Current Air Quality"
+            )
 
             col1, col2, col3 = st.columns(3)
 
             with col1:
+
                 st.metric(
                     "PM2.5",
                     f"{result['air_quality']['PM2.5']:.2f}"
                 )
 
             with col2:
+
                 st.metric(
                     "PM10",
                     f"{result['air_quality']['PM10']:.2f}"
                 )
 
             with col3:
+
                 st.metric(
                     "NO₂",
                     f"{result['air_quality']['NO2']:.2f}"
@@ -130,18 +204,21 @@ def pollution():
             col1, col2, col3 = st.columns(3)
 
             with col1:
+
                 st.metric(
                     "CO",
                     f"{result['air_quality']['CO']:.2f}"
                 )
 
             with col2:
+
                 st.metric(
                     "SO₂",
                     f"{result['air_quality']['SO2']:.2f}"
                 )
 
             with col3:
+
                 st.metric(
                     "O₃",
                     f"{result['air_quality']['O3']:.2f}"
@@ -153,13 +230,17 @@ def pollution():
             # AQI RESULT
             # ==========================================
 
-            st.markdown("## 🌍 AQI Prediction")
+            st.markdown(
+                "## 🌍 AQI Prediction"
+            )
 
             col1, col2 = st.columns(2)
 
             with col1:
 
-                aqi = round(result["prediction"]["aqi"])
+                aqi = round(
+                    result["prediction"]["aqi"]
+                )
 
                 st.metric(
                     "Predicted AQI",
@@ -172,28 +253,51 @@ def pollution():
             # UPDATE DASHBOARD
             # ==========================================
 
-            st.session_state.pollution_status = f"AQI {aqi}"
-            st.session_state.pollution_value = level
+            st.session_state.pollution_status = (
+                f"AQI {aqi}"
+            )
+
+            st.session_state.pollution_value = (
+                level
+            )
 
             with col2:
 
                 if level == "Good":
-                    st.success("🟢 Good")
+
+                    st.success(
+                        "🟢 Good"
+                    )
 
                 elif level == "Satisfactory":
-                    st.info("🟢 Satisfactory")
+
+                    st.info(
+                        "🟢 Satisfactory"
+                    )
 
                 elif level == "Moderate":
-                    st.warning("🟡 Moderate")
+
+                    st.warning(
+                        "🟡 Moderate"
+                    )
 
                 elif level == "Poor":
-                    st.warning("🟠 Poor")
+
+                    st.warning(
+                        "🟠 Poor"
+                    )
 
                 elif level == "Very Poor":
-                    st.error("🔴 Very Poor")
+
+                    st.error(
+                        "🔴 Very Poor"
+                    )
 
                 else:
-                    st.error("⚫ Severe")
+
+                    st.error(
+                        "⚫ Severe"
+                    )
 
             st.divider()
 
@@ -201,32 +305,86 @@ def pollution():
             # AI RECOMMENDATION
             # ==========================================
 
-            st.markdown("## 💡 AI Recommendation")
+            st.markdown(
+                "## 💡 AI Recommendation"
+            )
 
-            if level in ["Good", "Satisfactory"]:
+            if level in [
+                "Good",
+                "Satisfactory"
+            ]:
 
                 st.success(
-                    "Air quality is healthy. Outdoor activities are safe."
+                    "Air quality is healthy. "
+                    "Outdoor activities are safe."
                 )
 
             elif level == "Moderate":
 
                 st.warning(
-                    "Sensitive individuals should reduce prolonged outdoor exposure."
+                    "Sensitive individuals should reduce "
+                    "prolonged outdoor exposure."
                 )
 
             elif level == "Poor":
 
                 st.warning(
-                    "Reduce outdoor activities and consider wearing a mask."
+                    "Reduce outdoor activities and "
+                    "consider wearing a mask."
                 )
 
             else:
 
                 st.error(
-                    "Air quality is hazardous. Stay indoors whenever possible."
+                    "Air quality is hazardous. "
+                    "Stay indoors whenever possible."
                 )
+
+        # ==========================================
+        # TIMEOUT
+        # ==========================================
+
+        except requests.exceptions.Timeout:
+
+            st.error(
+                "⏱️ The backend took too long to respond."
+            )
+
+            st.info(
+                "The Render backend may be waking up. "
+                "Please try again."
+            )
+
+        # ==========================================
+        # CONNECTION ERROR
+        # ==========================================
+
+        except requests.exceptions.ConnectionError:
+
+            st.error(
+                "🔌 Could not connect to the backend."
+            )
+
+            st.info(
+                f"Backend URL: {BACKEND_URL}"
+            )
+
+        # ==========================================
+        # REQUEST ERROR
+        # ==========================================
+
+        except requests.exceptions.RequestException as e:
+
+            st.error(
+                f"❌ Backend request failed: {e}"
+            )
+
+        # ==========================================
+        # UNEXPECTED ERROR
+        # ==========================================
 
         except Exception as e:
 
-            st.error(f"Error: {e}")
+            st.error(
+                f"❌ Unexpected error: {e}"
+            )
