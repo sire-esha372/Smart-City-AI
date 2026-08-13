@@ -18,7 +18,7 @@ MODEL_PATH = os.path.abspath(
         os.path.dirname(__file__),
         "..",
         "ml_models",
-        "emergency.pt"
+        "emergency.onnx"
     )
 )
 
@@ -55,14 +55,16 @@ def load_model():
 
     if model is None:
 
-        print("Loading Emergency YOLO model...")
+        print(
+            "Loading Emergency YOLO ONNX model..."
+        )
 
         from ultralytics import YOLO
 
         model = YOLO(MODEL_PATH)
 
         print(
-            "Emergency YOLO model loaded successfully."
+            "Emergency YOLO ONNX model loaded successfully."
         )
 
     return model
@@ -85,7 +87,7 @@ def detect_emergency(image_path: str):
     emergency_model = load_model()
 
     print(
-        "Running lightweight Emergency YOLO..."
+        "Running lightweight Emergency YOLO ONNX..."
     )
 
     start_time = time.time()
@@ -97,19 +99,19 @@ def detect_emergency(image_path: str):
     results = emergency_model.predict(
         source=image_path,
 
-        # Smaller image for Render CPU/RAM
+        # Lightweight inference
         imgsz=320,
 
-        # Slightly higher threshold
+        # Confidence threshold
         conf=0.30,
 
-        # Render uses CPU
+        # Render CPU
         device="cpu",
 
         # Limit detections
         max_det=10,
 
-        # No unnecessary console output
+        # No progress output
         verbose=False
     )
 
@@ -118,7 +120,7 @@ def detect_emergency(image_path: str):
     )
 
     print(
-        f"Emergency YOLO inference completed "
+        f"Emergency YOLO ONNX inference completed "
         f"in {inference_time:.2f} seconds"
     )
 

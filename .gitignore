@@ -89,6 +89,7 @@ dist/
 *.pt
 *.pth
 *.onnx
+!backend/app/ml_models/emergency.onnx
 
 # Ignore all pickle files
 *.pkl
