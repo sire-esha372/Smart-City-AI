@@ -11,11 +11,7 @@ from config import BACKEND_URL
 # API URL
 # =========================================================
 
-API_URL = (
-    f"{BACKEND_URL.rstrip('/')}/emergency/predict"
-)
-
-st.info(f"Emergency API: {API_URL}")
+API_URL = f"{BACKEND_URL.rstrip('/')}/emergency/predict"
 
 
 # =========================================================
@@ -57,13 +53,30 @@ def emergency():
         return
 
     # =====================================================
-    # ORIGINAL IMAGE
+    # OPEN IMAGE
     # =====================================================
 
-    st.subheader("📷 Original Image")
+    try:
+
+        original_image = Image.open(
+            uploaded_file
+        ).convert("RGB")
+
+    except Exception as e:
+
+        st.error(
+            f"❌ Could not read image: {e}"
+        )
+
+        return
+
+    # =====================================================
+    # PREVIEW
+    # =====================================================
 
     st.image(
-        uploaded_file,
+        original_image,
+        caption="Uploaded Image",
         use_container_width=True
     )
 
@@ -78,23 +91,62 @@ def emergency():
         use_container_width=True
     ):
 
-        files = {
-            "file": (
-                uploaded_file.name,
-                uploaded_file.getvalue(),
-                uploaded_file.type
-            )
-        }
-
-        # =================================================
-        # CALL BACKEND
-        # =================================================
-
         try:
 
+            # =================================================
+            # RESIZE IMAGE FOR RENDER
+            # =================================================
+
+            image = original_image.copy()
+
+            max_size = 1280
+
+            if max(image.size) > max_size:
+
+                image.thumbnail(
+                    (max_size, max_size),
+                    Image.Resampling.LANCZOS
+                )
+
+            # =================================================
+            # COMPRESS IMAGE
+            # =================================================
+
+            image_buffer = BytesIO()
+
+            image.save(
+                image_buffer,
+                format="JPEG",
+                quality=80,
+                optimize=True
+            )
+
+            image_bytes = (
+                image_buffer.getvalue()
+            )
+
+            st.info(
+                "🚨 Sending optimized image to Emergency AI..."
+            )
+
+            # =================================================
+            # FILE PAYLOAD
+            # =================================================
+
+            files = {
+                "file": (
+                    "emergency.jpg",
+                    image_bytes,
+                    "image/jpeg"
+                )
+            }
+
+            # =================================================
+            # CALL FASTAPI
+            # =================================================
+
             with st.spinner(
-                "🚨 Running AI Detection... "
-                "The first request may take a little longer."
+                "🚨 Running AI Detection..."
             ):
 
                 response = requests.post(
@@ -104,7 +156,7 @@ def emergency():
                 )
 
             # =================================================
-            # BACKEND ERROR
+            # RESPONSE STATUS
             # =================================================
 
             if response.status_code != 200:
@@ -121,35 +173,17 @@ def emergency():
                 return
 
             # =================================================
-            # JSON RESPONSE
+            # JSON
             # =================================================
 
-            try:
-
-                data = response.json()
-
-            except ValueError:
-
-                st.error(
-                    "❌ Backend returned an invalid response."
-                )
-
-                st.code(
-                    response.text
-                )
-
-                return
-
-            # =================================================
-            # SUCCESS
-            # =================================================
+            data = response.json()
 
             st.success(
                 "✅ Emergency Detection Completed!"
             )
 
             # =================================================
-            # GET DETECTIONS
+            # DETECTIONS
             # =================================================
 
             detections = data.get(
@@ -158,36 +192,31 @@ def emergency():
             )
 
             # =================================================
-            # RESULT IMAGE URL
+            # RESULT IMAGE
             # =================================================
 
             image_url = data.get(
                 "image_url"
             )
 
-            # =================================================
-            # FIX LOCALHOST URL
-            # =================================================
-
             if image_url:
 
-                image_url = image_url.replace(
-                    "http://127.0.0.1:8000",
-                    BACKEND_URL.rstrip("/")
-                )
+                # Convert local backend URL
+                # to Render backend URL
 
-                image_url = image_url.replace(
-                    "http://localhost:8000",
-                    BACKEND_URL.rstrip("/")
-                )
+                if "127.0.0.1:8000" in image_url:
 
-            # =================================================
-            # DETECTION RESULT IMAGE
-            # =================================================
+                    image_url = image_url.replace(
+                        "http://127.0.0.1:8000",
+                        BACKEND_URL.rstrip("/")
+                    )
 
-            if image_url:
+                elif "localhost:8000" in image_url:
 
-                st.divider()
+                    image_url = image_url.replace(
+                        "http://localhost:8000",
+                        BACKEND_URL.rstrip("/")
+                    )
 
                 st.subheader(
                     "🎯 Detection Result"
@@ -204,10 +233,6 @@ def emergency():
                             timeout=60
                         )
 
-                    # -----------------------------------------
-                    # IMAGE SUCCESS
-                    # -----------------------------------------
-
                     if image_response.status_code == 200:
 
                         result_image = Image.open(
@@ -222,37 +247,21 @@ def emergency():
                             use_container_width=True
                         )
 
-                    # -----------------------------------------
-                    # IMAGE ERROR
-                    # -----------------------------------------
-
                     else:
 
                         st.warning(
-                            "⚠️ Detection completed, "
-                            "but the detection image could not be loaded."
-                        )
-
-                        st.caption(
-                            f"Image server returned: "
-                            f"{image_response.status_code}"
+                            "Detection completed, "
+                            "but the result image could not be loaded."
                         )
 
                         st.code(
-                            image_url
+                            f"Image URL: {image_url}"
                         )
-
-                except requests.exceptions.Timeout:
-
-                    st.warning(
-                        "⏱️ Detection completed, "
-                        "but the result image took too long to load."
-                    )
 
                 except Exception as e:
 
                     st.warning(
-                        "⚠️ Detection completed, "
+                        "Detection completed, "
                         "but the result image could not be displayed."
                     )
 
@@ -260,14 +269,8 @@ def emergency():
                         str(e)
                     )
 
-            else:
-
-                st.warning(
-                    "⚠️ Backend did not return a detection image."
-                )
-
             # =================================================
-            # DETECTION SUMMARY
+            # SUMMARY
             # =================================================
 
             st.divider()
@@ -293,63 +296,47 @@ def emergency():
                 )
 
             # =================================================
-            # DETECTION FOUND
+            # EMERGENCY DETECTED
             # =================================================
 
             else:
-
-                first = detections[0]
-
-                # ---------------------------------------------
-                # DASHBOARD STATE
-                # ---------------------------------------------
 
                 st.session_state.alert_status = (
                     str(len(detections))
                 )
 
+                first = detections[0]
+
                 st.session_state.alert_value = (
                     first["class"].title()
                 )
 
-                # ---------------------------------------------
-                # METRICS
-                # ---------------------------------------------
+                c1, c2, c3 = st.columns(3)
 
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
+                with c1:
 
                     st.metric(
                         "Detected Object",
                         first["class"].title()
                     )
 
-                with col2:
+                with c2:
 
                     st.metric(
                         "Confidence",
                         f"{first['confidence'] * 100:.2f}%"
                     )
 
-                with col3:
+                with c3:
 
                     st.metric(
                         "Total Detections",
                         len(detections)
                     )
 
-                # ---------------------------------------------
-                # ALERT
-                # ---------------------------------------------
-
                 st.error(
                     "🚨 Emergency Detected"
                 )
-
-                # ---------------------------------------------
-                # OBJECT LIST
-                # ---------------------------------------------
 
                 st.markdown(
                     "### 🔥 Detected Objects"
@@ -357,22 +344,10 @@ def emergency():
 
                 for item in detections:
 
-                    class_name = item.get(
-                        "class",
-                        "Unknown"
-                    )
-
-                    confidence = float(
-                        item.get(
-                            "confidence",
-                            0
-                        )
-                    )
-
                     st.write(
-                        f"🔥 **{class_name.title()}** "
+                        f"🔥 **{item['class'].title()}** "
                         f"— "
-                        f"{confidence * 100:.2f}%"
+                        f"{item['confidence'] * 100:.2f}%"
                     )
 
         # =====================================================
@@ -386,8 +361,7 @@ def emergency():
             )
 
             st.info(
-                "The Render backend may be loading the "
-                "YOLO model. Please try again."
+                "The Render backend took too long to process the image."
             )
 
         # =====================================================
@@ -398,10 +372,6 @@ def emergency():
 
             st.error(
                 "🔌 Could not connect to the backend."
-            )
-
-            st.info(
-                f"Backend URL: {BACKEND_URL}"
             )
 
             st.code(
@@ -415,23 +385,15 @@ def emergency():
         except requests.exceptions.RequestException as e:
 
             st.error(
-                "❌ Emergency request failed."
-            )
-
-            st.code(
-                str(e)
+                f"❌ Request failed: {e}"
             )
 
         # =====================================================
-        # UNEXPECTED ERROR
+        # OTHER ERROR
         # =====================================================
 
         except Exception as e:
 
             st.error(
-                "❌ Unexpected error."
-            )
-
-            st.code(
-                str(e)
+                f"❌ Unexpected error: {e}"
             )
