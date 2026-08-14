@@ -1,26 +1,21 @@
 import os
-
-# =========================================================
-# RENDER CPU OPTIMIZATION
-# =========================================================
-
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-
+import re
 from pathlib import Path
-from functools import lru_cache
 
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
 
-# ---------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------
+# =========================================================
+# RENDER MEMORY OPTIMIZATION
+# =========================================================
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+# =========================================================
+# PATHS
+# =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,62 +23,32 @@ DOCUMENTS_PATH = (
     BASE_DIR / "rag" / "documents"
 )
 
-VECTORSTORE_PATH = (
-    BASE_DIR / "rag" / "vectorstore"
-)
-
 print(
     f"Documents Path : {DOCUMENTS_PATH}"
 )
 
-print(
-    f"Vectorstore Path : {VECTORSTORE_PATH}"
-)
+
+# =========================================================
+# IN-MEMORY DOCUMENT CACHE
+# =========================================================
+
+documents = None
 
 
-# ---------------------------------------------------------------------
-# Embeddings
-# ---------------------------------------------------------------------
+# =========================================================
+# LOAD PDF DOCUMENT
+# =========================================================
 
-@lru_cache(maxsize=1)
-def get_embeddings():
+def load_documents():
 
-    print(
-        "Loading HuggingFace embedding model..."
-    )
+    global documents
 
-    embeddings = HuggingFaceEmbeddings(
+    if documents is not None:
 
-        model_name=(
-            "sentence-transformers/"
-            "all-MiniLM-L6-v2"
-        ),
-
-        model_kwargs={
-            "device": "cpu"
-        },
-
-        encode_kwargs={
-            "normalize_embeddings": True
-        }
-    )
+        return documents
 
     print(
-        "HuggingFace embedding model "
-        "loaded successfully."
-    )
-
-    return embeddings
-
-
-# ---------------------------------------------------------------------
-# Build FAISS Database
-# ---------------------------------------------------------------------
-
-def build_vectorstore():
-
-    print(
-        "Building FAISS vector database..."
+        "Loading Smart City PDF..."
     )
 
     if not DOCUMENTS_PATH.exists():
@@ -97,14 +62,14 @@ def build_vectorstore():
         DOCUMENTS_PATH.glob("*.pdf")
     )
 
-    if len(pdf_files) == 0:
+    if not pdf_files:
 
         raise Exception(
             f"No PDF files found inside:\n"
             f"{DOCUMENTS_PATH}"
         )
 
-    documents = []
+    all_text = []
 
     for pdf in pdf_files:
 
@@ -116,96 +81,178 @@ def build_vectorstore():
             str(pdf)
         )
 
-        documents.extend(
-            loader.load()
+        pages = loader.load()
+
+        for page in pages:
+
+            text = page.page_content.strip()
+
+            if text:
+
+                all_text.append(text)
+
+    # =====================================================
+    # SPLIT INTO SMALL CHUNKS
+    # =====================================================
+
+    chunks = []
+
+    for text in all_text:
+
+        # Split paragraphs first
+        paragraphs = re.split(
+            r"\n\s*\n",
+            text
         )
 
-    print(
-        f"Loaded {len(documents)} document pages."
-    )
+        for paragraph in paragraphs:
 
-    splitter = RecursiveCharacterTextSplitter(
+            paragraph = paragraph.strip()
 
-        chunk_size=1000,
+            if not paragraph:
 
-        chunk_overlap=200
-    )
+                continue
 
-    docs = splitter.split_documents(
-        documents
-    )
+            # Keep chunks reasonably small
+            words = paragraph.split()
 
-    print(
-        f"Created {len(docs)} text chunks."
-    )
+            chunk_size = 180
 
-    VECTORSTORE_PATH.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+            for i in range(
+                0,
+                len(words),
+                chunk_size
+            ):
 
-    print(
-        "Creating FAISS embeddings..."
-    )
+                chunk = " ".join(
+                    words[
+                        i:i + chunk_size
+                    ]
+                )
 
-    vectorstore = FAISS.from_documents(
-        docs,
-        get_embeddings()
-    )
+                if chunk:
 
-    vectorstore.save_local(
-        str(VECTORSTORE_PATH)
-    )
+                    chunks.append(
+                        chunk
+                    )
+
+    documents = chunks
 
     print(
-        "FAISS database created successfully!"
+        f"Loaded {len(documents)} "
+        f"lightweight document chunks."
     )
 
-    return vectorstore
+    return documents
 
 
-# ---------------------------------------------------------------------
-# Load FAISS Database
-# ---------------------------------------------------------------------
+# =========================================================
+# LIGHTWEIGHT KEYWORD RETRIEVAL
+# =========================================================
 
-@lru_cache(maxsize=1)
-def load_vectorstore():
+def retrieve_documents(
+    question,
+    top_k=3
+):
 
-    index_file = (
-        VECTORSTORE_PATH / "index.faiss"
+    docs = load_documents()
+
+    # =====================================================
+    # QUESTION WORDS
+    # =====================================================
+
+    question_words = set(
+        re.findall(
+            r"\b[a-zA-Z]{3,}\b",
+            question.lower()
+        )
     )
 
-    if not index_file.exists():
+    # =====================================================
+    # SCORE EACH CHUNK
+    # =====================================================
 
-        print(
-            "FAISS index not found."
+    scored_documents = []
+
+    for document in docs:
+
+        document_words = set(
+            re.findall(
+                r"\b[a-zA-Z]{3,}\b",
+                document.lower()
+            )
         )
 
-        return build_vectorstore()
+        # Basic keyword overlap
+        overlap = (
+            question_words
+            & document_words
+        )
+
+        score = len(
+            overlap
+        )
+
+        # =================================================
+        # EXTRA SCORE FOR EXACT QUESTION PHRASES
+        # =================================================
+
+        question_lower = (
+            question.lower().strip()
+        )
+
+        document_lower = (
+            document.lower()
+        )
+
+        if question_lower in document_lower:
+
+            score += 10
+
+        scored_documents.append(
+            (
+                score,
+                document
+            )
+        )
+
+    # =====================================================
+    # SORT
+    # =====================================================
+
+    scored_documents.sort(
+        key=lambda item: item[0],
+        reverse=True
+    )
+
+    # =====================================================
+    # RETURN TOP DOCUMENTS
+    # =====================================================
+
+    selected = [
+        document
+        for score, document
+        in scored_documents[:top_k]
+        if score > 0
+    ]
+
+    # If no keyword matches, return first
+    # few chunks so the LLM still has context.
+    if not selected:
+
+        selected = docs[:top_k]
 
     print(
-        "Loading existing FAISS database..."
+        f"Retrieved {len(selected)} "
+        f"document chunks."
     )
 
-    vectorstore = FAISS.load_local(
-
-        str(VECTORSTORE_PATH),
-
-        get_embeddings(),
-
-        allow_dangerous_deserialization=True
-    )
-
-    print(
-        "FAISS database loaded successfully."
-    )
-
-    return vectorstore
+    return selected
 
 
-# ---------------------------------------------------------------------
-# Ask Question
-# ---------------------------------------------------------------------
+# =========================================================
+# ASK QUESTION
+# =========================================================
 
 def ask_question(
     question,
@@ -213,48 +260,22 @@ def ask_question(
 ):
 
     print(
-        "Starting RAG question..."
+        "Starting lightweight RAG..."
     )
 
     # =====================================================
-    # LOAD CACHED VECTORSTORE
+    # RETRIEVE RELEVANT CONTEXT
     # =====================================================
 
-    vectorstore = load_vectorstore()
-
-    # =====================================================
-    # RETRIEVE ONLY TOP 3 DOCUMENTS
-    # =====================================================
-
-    print(
-        "Searching knowledge base..."
-    )
-
-    documents = (
-        vectorstore.similarity_search(
+    retrieved_documents = (
+        retrieve_documents(
             question,
-            k=3
+            top_k=3
         )
     )
-
-    print(
-        f"Retrieved {len(documents)} documents."
-    )
-
-    # =====================================================
-    # BUILD CONTEXT
-    # =====================================================
-
-    context_parts = []
-
-    for document in documents:
-
-        context_parts.append(
-            document.page_content
-        )
 
     context = "\n\n".join(
-        context_parts
+        retrieved_documents
     )
 
     # =====================================================
@@ -284,11 +305,15 @@ def ask_question(
 You are a Smart City AI assistant.
 
 Answer the user's question ONLY using
-the provided context.
+the context provided below.
 
 If the answer is not available in the
-context, say that the information is
-not available in the provided documents.
+context, clearly say:
+
+"The information is not available
+in the provided government document."
+
+Do not invent information.
 
 Keep the answer clear and concise.
 
@@ -302,7 +327,7 @@ Answer:
 """
 
     # =====================================================
-    # GENERATE ANSWER
+    # LLM RESPONSE
     # =====================================================
 
     response = llm.invoke(
@@ -314,7 +339,7 @@ Answer:
     )
 
     # =====================================================
-    # RETURN ANSWER
+    # RETURN
     # =====================================================
 
     return response.content
