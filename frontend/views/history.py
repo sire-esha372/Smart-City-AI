@@ -15,7 +15,7 @@ def history_page():
     try:
 
         response = requests.get(
-            "http://127.0.0.1:8000/history/"
+            "https://smart-city-ai-1la1.onrender.com/history/"
         )
 
         if response.status_code != 200:
