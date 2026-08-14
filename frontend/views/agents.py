@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-API_URL = "http://127.0.0.1:8000/agents/chat"
+API_URL = "https://smart-city-ai-1la1.onrender.com/agents/chat"
 
 
 def agents_page():
