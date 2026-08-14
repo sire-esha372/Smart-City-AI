@@ -100,7 +100,7 @@ def detect_emergency(image_path: str):
         source=image_path,
 
         # Lightweight inference
-        imgsz=320,
+        imgsz=416,
 
         # Confidence threshold
         conf=0.30,
