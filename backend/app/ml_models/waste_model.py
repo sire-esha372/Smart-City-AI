@@ -1,4 +1,18 @@
 import os
+
+# =========================================================
+# FORCE TENSORFLOW TO USE CPU ONLY
+# =========================================================
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+# Keep CPU usage small for Render Free
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+
+
 import numpy as np
 from PIL import Image
 
@@ -6,51 +20,21 @@ from ..database.database import SessionLocal
 from ..database.crud import save_prediction
 
 
-# ==========================================
+# =========================================================
 # MODEL PATH
-# ==========================================
+# =========================================================
 
-MODEL_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "ml_models",
-    "best_waste_model.keras"
+MODEL_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "best_waste_model.keras"
+    )
 )
 
 
-# ==========================================
-# LAZY MODEL
-# ==========================================
-
-model = None
-
-
-def load_model():
-
-    global model
-
-    if model is None:
-
-        print("Loading Waste TensorFlow model...")
-
-        # Import TensorFlow only when Waste
-        # prediction is actually requested
-        import tensorflow as tf
-
-        model = tf.keras.models.load_model(
-            MODEL_PATH
-        )
-
-        print(
-            "Waste TensorFlow model loaded successfully."
-        )
-
-    return model
-
-
-# ==========================================
+# =========================================================
 # CLASS NAMES
-# ==========================================
+# =========================================================
 
 CLASS_NAMES = [
     "Cardboard",
@@ -62,88 +46,190 @@ CLASS_NAMES = [
 ]
 
 
-# ==========================================
+# =========================================================
+# LAZY MODEL
+# =========================================================
+
+model = None
+tf = None
+
+
+def load_model():
+
+    global model
+    global tf
+
+    if model is None:
+
+        print(
+            "Loading Waste TensorFlow model "
+            "in CPU-only mode..."
+        )
+
+        # Import TensorFlow only when Waste
+        # prediction is requested
+        import tensorflow as tensorflow
+
+        tf = tensorflow
+
+        # Explicitly disable GPU
+        try:
+
+            tf.config.set_visible_devices(
+                [],
+                "GPU"
+            )
+
+        except RuntimeError:
+
+            # GPU configuration was already initialized.
+            # CUDA_VISIBLE_DEVICES=-1 still prevents GPU use.
+            pass
+
+        # Limit TensorFlow CPU threads
+        try:
+
+            tf.config.threading.set_intra_op_parallelism_threads(
+                1
+            )
+
+            tf.config.threading.set_inter_op_parallelism_threads(
+                1
+            )
+
+        except RuntimeError:
+
+            pass
+
+        print(
+            "Loading Waste Keras model..."
+        )
+
+        model = tf.keras.models.load_model(
+            MODEL_PATH,
+            compile=False
+        )
+
+        print(
+            "Waste TensorFlow model "
+            "loaded successfully."
+        )
+
+    return model
+
+
+# =========================================================
 # WASTE PREDICTION
-# ==========================================
+# =========================================================
 
 def predict_waste(image_file):
 
-    # ==========================================
-    # LOAD MODEL ONLY WHEN NEEDED
-    # ==========================================
+    print(
+        "Starting Waste Classification..."
+    )
+
+    # =====================================================
+    # LOAD MODEL
+    # =====================================================
 
     waste_model = load_model()
 
-    # Import TensorFlow here as well so that
-    # TensorFlow is not loaded during startup
-    import tensorflow as tf
-
-    # ==========================================
+    # =====================================================
     # OPEN IMAGE
-    # ==========================================
+    # =====================================================
 
     image = Image.open(
         image_file
     ).convert("RGB")
 
-    # ==========================================
+    # =====================================================
     # RESIZE
-    # ==========================================
+    # =====================================================
 
     image = image.resize(
-        (224, 224)
+        (224, 224),
+        Image.Resampling.BILINEAR
     )
 
-    # ==========================================
-    # CONVERT TO NUMPY
-    # ==========================================
+    # =====================================================
+    # NUMPY
+    # =====================================================
 
-    image = np.array(
-        image
+    image = np.asarray(
+        image,
+        dtype=np.float32
     )
 
-    # ==========================================
+    # =====================================================
     # MOBILENETV2 PREPROCESSING
-    # ==========================================
+    # =====================================================
 
     image = tf.keras.applications.mobilenet_v2.preprocess_input(
         image
     )
 
-    # ==========================================
-    # ADD BATCH DIMENSION
-    # ==========================================
+    # =====================================================
+    # BATCH DIMENSION
+    # =====================================================
 
     image = np.expand_dims(
         image,
         axis=0
     )
 
-    # ==========================================
-    # PREDICTION
-    # ==========================================
+    # =====================================================
+    # DIRECT MODEL INFERENCE
+    # =====================================================
 
-    prediction = waste_model.predict(
-        image,
-        verbose=0
+    print(
+        "Running CPU-only Waste inference..."
     )
 
-    index = np.argmax(
-        prediction
+    prediction = waste_model(
+        image,
+        training=False
+    )
+
+    # Convert TensorFlow tensor to NumPy
+    prediction = prediction.numpy()
+
+    # =====================================================
+    # RESULT
+    # =====================================================
+
+    index = int(
+        np.argmax(
+            prediction[0]
+        )
     )
 
     confidence = round(
         float(
-            np.max(prediction) * 100
+            np.max(
+                prediction[0]
+            ) * 100
         ),
         2
     )
 
-    waste_type = CLASS_NAMES[index]
+    # Safety check
+    if index >= len(CLASS_NAMES):
 
-    # ==========================================
-    # SAVE TO DATABASE
-    # ==========================================
+        waste_type = "Unknown"
+
+    else:
+
+        waste_type = CLASS_NAMES[index]
+
+    print(
+        f"Waste Prediction: "
+        f"{waste_type} | "
+        f"{confidence}%"
+    )
+
+    # =====================================================
+    # DATABASE
+    # =====================================================
 
     db = SessionLocal()
 
@@ -160,9 +246,13 @@ def predict_waste(image_file):
 
         db.close()
 
-    # ==========================================
-    # RESPONSE
-    # ==========================================
+    # =====================================================
+    # FINAL RESPONSE
+    # =====================================================
+
+    print(
+        "Waste classification completed."
+    )
 
     return {
         "prediction": waste_type,
