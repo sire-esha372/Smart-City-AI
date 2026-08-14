@@ -1,20 +1,7 @@
 import os
-
-# =========================================================
-# FORCE TENSORFLOW TO USE CPU ONLY
-# =========================================================
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-# Keep CPU usage small for Render Free
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
-os.environ["TF_NUM_INTEROP_THREADS"] = "1"
-
-
 import numpy as np
 from PIL import Image
+import onnxruntime as ort
 
 from ..database.database import SessionLocal
 from ..database.crud import save_prediction
@@ -27,7 +14,7 @@ from ..database.crud import save_prediction
 MODEL_PATH = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
-        "best_waste_model.keras"
+        "waste.onnx"
     )
 )
 
@@ -47,75 +34,40 @@ CLASS_NAMES = [
 
 
 # =========================================================
-# LAZY MODEL
+# MODEL SETTINGS
 # =========================================================
 
-model = None
-tf = None
+INPUT_SIZE = (224, 224)
 
+session = None
+
+
+# =========================================================
+# LOAD ONNX MODEL
+# =========================================================
 
 def load_model():
 
-    global model
-    global tf
+    global session
 
-    if model is None:
-
-        print(
-            "Loading Waste TensorFlow model "
-            "in CPU-only mode..."
-        )
-
-        # Import TensorFlow only when Waste
-        # prediction is requested
-        import tensorflow as tensorflow
-
-        tf = tensorflow
-
-        # Explicitly disable GPU
-        try:
-
-            tf.config.set_visible_devices(
-                [],
-                "GPU"
-            )
-
-        except RuntimeError:
-
-            # GPU configuration was already initialized.
-            # CUDA_VISIBLE_DEVICES=-1 still prevents GPU use.
-            pass
-
-        # Limit TensorFlow CPU threads
-        try:
-
-            tf.config.threading.set_intra_op_parallelism_threads(
-                1
-            )
-
-            tf.config.threading.set_inter_op_parallelism_threads(
-                1
-            )
-
-        except RuntimeError:
-
-            pass
+    if session is None:
 
         print(
-            "Loading Waste Keras model..."
+            "Loading Waste ONNX model..."
         )
 
-        model = tf.keras.models.load_model(
+        session = ort.InferenceSession(
             MODEL_PATH,
-            compile=False
+            providers=[
+                "CPUExecutionProvider"
+            ]
         )
 
         print(
-            "Waste TensorFlow model "
-            "loaded successfully."
+            "Waste ONNX model loaded successfully."
         )
 
-    return model
+    return session
 
 
 # =========================================================
@@ -125,7 +77,7 @@ def load_model():
 def predict_waste(image_file):
 
     print(
-        "Starting Waste Classification..."
+        "Starting Waste ONNX Classification..."
     )
 
     # =====================================================
@@ -147,7 +99,7 @@ def predict_waste(image_file):
     # =====================================================
 
     image = image.resize(
-        (224, 224),
+        INPUT_SIZE,
         Image.Resampling.BILINEAR
     )
 
@@ -162,14 +114,20 @@ def predict_waste(image_file):
 
     # =====================================================
     # MOBILENETV2 PREPROCESSING
+    #
+    # Same preprocessing used by the
+    # original TensorFlow model.
     # =====================================================
 
-    image = tf.keras.applications.mobilenet_v2.preprocess_input(
-        image
-    )
+    image = (
+        image / 127.5
+    ) - 1.0
 
     # =====================================================
     # BATCH DIMENSION
+    #
+    # ONNX model expects:
+    # [batch, 224, 224, 3]
     # =====================================================
 
     image = np.expand_dims(
@@ -178,48 +136,68 @@ def predict_waste(image_file):
     )
 
     # =====================================================
-    # DIRECT MODEL INFERENCE
+    # RUN ONNX INFERENCE
     # =====================================================
 
     print(
-        "Running CPU-only Waste inference..."
+        "Running Waste ONNX inference..."
     )
 
-    prediction = waste_model(
-        image,
-        training=False
+    input_name = (
+        waste_model
+        .get_inputs()[0]
+        .name
     )
 
-    # Convert TensorFlow tensor to NumPy
-    prediction = prediction.numpy()
+    output_name = (
+        waste_model
+        .get_outputs()[0]
+        .name
+    )
+
+    prediction = waste_model.run(
+        [output_name],
+        {
+            input_name: image
+        }
+    )[0]
 
     # =====================================================
-    # RESULT
+    # GET CLASS
     # =====================================================
+
+    prediction = np.asarray(
+        prediction
+    )
+
+    scores = prediction[0]
 
     index = int(
         np.argmax(
-            prediction[0]
+            scores
         )
     )
 
     confidence = round(
         float(
-            np.max(
-                prediction[0]
-            ) * 100
+            scores[index] * 100
         ),
         2
     )
 
-    # Safety check
-    if index >= len(CLASS_NAMES):
+    # =====================================================
+    # CLASS NAME
+    # =====================================================
 
-        waste_type = "Unknown"
+    if index < len(CLASS_NAMES):
+
+        waste_type = (
+            CLASS_NAMES[index]
+        )
 
     else:
 
-        waste_type = CLASS_NAMES[index]
+        waste_type = "Unknown"
 
     print(
         f"Waste Prediction: "
@@ -239,7 +217,9 @@ def predict_waste(image_file):
             db=db,
             module="Waste",
             status=waste_type,
-            value=f"{confidence}% Confidence"
+            value=(
+                f"{confidence}% Confidence"
+            )
         )
 
     finally:
@@ -251,7 +231,7 @@ def predict_waste(image_file):
     # =====================================================
 
     print(
-        "Waste classification completed."
+        "Waste ONNX classification completed."
     )
 
     return {
