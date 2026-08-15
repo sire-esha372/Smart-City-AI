@@ -1,1 +1,11 @@
-BACKEND_URL = "https://smart-city-ai-1la1.onrender.com"
+import os
+
+
+# =========================================================
+# BACKEND URL
+# =========================================================
+
+BACKEND_URL = os.getenv(
+    "BACKEND_URL",
+    "http://127.0.0.1:8000"
+)

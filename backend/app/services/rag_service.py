@@ -1,8 +1,8 @@
 import os
 import re
+import json
 from pathlib import Path
 
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_groq import ChatGroq
 
 
@@ -19,9 +19,15 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DOCUMENTS_PATH = BASE_DIR / "rag" / "documents"
+RAG_CACHE_PATH = (
+    BASE_DIR
+    / "rag"
+    / "rag_chunks.json"
+)
 
-print(f"Documents Path: {DOCUMENTS_PATH}")
+print(
+    f"RAG Cache Path: {RAG_CACHE_PATH}"
+)
 
 
 # =========================================================
@@ -33,7 +39,7 @@ retrieval_index = None
 
 
 # =========================================================
-# LOAD AND PREPARE DOCUMENTS
+# LOAD PREPROCESSED RAG DOCUMENTS
 # =========================================================
 
 def load_documents():
@@ -41,109 +47,63 @@ def load_documents():
     global documents_cache
     global retrieval_index
 
+    # -----------------------------------------------------
     # Already loaded
+    # -----------------------------------------------------
+
     if documents_cache is not None:
 
         return documents_cache
 
-    print("Loading Smart City PDF...")
-
-    if not DOCUMENTS_PATH.exists():
-
-        raise Exception(
-            f"Documents folder not found:\n{DOCUMENTS_PATH}"
-        )
-
-    pdf_files = list(
-        DOCUMENTS_PATH.glob("*.pdf")
+    print(
+        "Loading preprocessed RAG cache..."
     )
 
-    if not pdf_files:
+    # -----------------------------------------------------
+    # Check cache file
+    # -----------------------------------------------------
+
+    if not RAG_CACHE_PATH.exists():
 
         raise Exception(
-            f"No PDF files found inside:\n{DOCUMENTS_PATH}"
+            f"RAG cache not found:\n"
+            f"{RAG_CACHE_PATH}"
         )
 
-    chunks = []
+    # -----------------------------------------------------
+    # Load JSON
+    # -----------------------------------------------------
 
-    # =====================================================
-    # LOAD PDFS
-    # =====================================================
+    with open(
+        RAG_CACHE_PATH,
+        "r",
+        encoding="utf-8"
+    ) as file:
 
-    for pdf in pdf_files:
-
-        print(f"Loading PDF: {pdf.name}")
-
-        loader = PyPDFLoader(
-            str(pdf)
+        documents_cache = json.load(
+            file
         )
-
-        pages = loader.load()
-
-        for page in pages:
-
-            text = page.page_content.strip()
-
-            if not text:
-                continue
-
-            # ---------------------------------------------
-            # Split paragraphs
-            # ---------------------------------------------
-
-            paragraphs = re.split(
-                r"\n\s*\n",
-                text
-            )
-
-            for paragraph in paragraphs:
-
-                paragraph = paragraph.strip()
-
-                if not paragraph:
-                    continue
-
-                words = paragraph.split()
-
-                chunk_size = 180
-
-                for i in range(
-                    0,
-                    len(words),
-                    chunk_size
-                ):
-
-                    chunk = " ".join(
-                        words[
-                            i:i + chunk_size
-                        ]
-                    )
-
-                    if chunk:
-                        chunks.append(chunk)
-
-    # =====================================================
-    # CACHE DOCUMENTS
-    # =====================================================
-
-    documents_cache = chunks
 
     print(
         f"Loaded {len(documents_cache)} "
-        f"document chunks."
+        f"preprocessed document chunks."
     )
 
     # =====================================================
     # BUILD RETRIEVAL INDEX ONCE
     # =====================================================
 
-    print("Building RAG retrieval index...")
+    print(
+        "Building RAG retrieval index..."
+    )
 
     retrieval_index = []
 
     for document in documents_cache:
 
-        document_lower = document.lower()
+        document_lower = (
+            document.lower()
+        )
 
         document_words = set(
             re.findall(
@@ -160,7 +120,9 @@ def load_documents():
             )
         )
 
-    print("RAG retrieval index ready.")
+    print(
+        "RAG retrieval index ready."
+    )
 
     return documents_cache
 
@@ -176,7 +138,10 @@ def retrieve_documents(
 
     global retrieval_index
 
-    # Make sure documents/index are loaded
+    # -----------------------------------------------------
+    # Make sure documents are loaded
+    # -----------------------------------------------------
+
     load_documents()
 
     if not retrieval_index:
@@ -210,14 +175,23 @@ def retrieve_documents(
         document_words
     ) in retrieval_index:
 
+        # -------------------------------------------------
+        # Keyword overlap
+        # -------------------------------------------------
+
         overlap = (
             question_words
             & document_words
         )
 
-        score = len(overlap)
+        score = len(
+            overlap
+        )
 
+        # -------------------------------------------------
         # Exact phrase match
+        # -------------------------------------------------
+
         if question_lower in document_lower:
 
             score += 10
@@ -232,13 +206,17 @@ def retrieve_documents(
             )
 
     # =====================================================
-    # SORT BY RELEVANCE
+    # SORT BY SCORE
     # =====================================================
 
     scored_documents.sort(
         key=lambda item: item[0],
         reverse=True
     )
+
+    # =====================================================
+    # SELECT TOP DOCUMENTS
+    # =====================================================
 
     selected = [
         document
@@ -272,16 +250,20 @@ def ask_question(
 ):
 
     print("=" * 60)
-    print("Starting Smart City RAG...")
+    print(
+        "Starting Smart City RAG..."
+    )
     print("=" * 60)
 
     # =====================================================
     # RETRIEVE CONTEXT
     # =====================================================
 
-    retrieved_documents = retrieve_documents(
-        question,
-        top_k=3
+    retrieved_documents = (
+        retrieve_documents(
+            question,
+            top_k=3
+        )
     )
 
     context = "\n\n".join(
@@ -296,7 +278,9 @@ def ask_question(
     # GROQ
     # =====================================================
 
-    print("Calling Groq LLM...")
+    print(
+        "Calling Groq LLM..."
+    )
 
     llm = ChatGroq(
         groq_api_key=groq_api_key,
@@ -342,7 +326,9 @@ Answer:
         prompt
     )
 
-    print("Groq response received.")
+    print(
+        "Groq response received."
+    )
 
     # =====================================================
     # RETURN
