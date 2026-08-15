@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🏙️ Smart City AI Platform
 
 > An AI-powered urban intelligence platform combining Machine Learning, Computer Vision, NLP, Retrieval-Augmented Generation (RAG), and AI Agents to support smarter city operations.
@@ -427,6 +428,49 @@ The frontend uses an environment-based backend URL so local development and prod
 
 ## 📸 Application Screenshots
 
+
+## 📸 Application Screenshots
+
+### 🏙️ Dashboard
+
+![Smart City AI Dashboard](screenshots/01-dashboard.png)
+
+---
+
+### 🚦 Traffic Intelligence
+
+![Traffic Intelligence](screenshots/02-traffic.png)
+
+---
+
+### 🌫️ Environmental Monitoring
+
+![Environmental Monitoring](screenshots/03-environmental-monitoring.png)
+
+---
+
+### 🚨 Emergency Detection
+
+![Emergency Detection](screenshots/04-emergency-detection.png)
+
+---
+
+### ♻️ Waste Classification
+
+![Waste Classification](screenshots/05-waste-classification.png)
+
+---
+
+### 📚 RAG Knowledge Base
+
+![RAG Knowledge Base](screenshots/06-rag-knowledge-base.png)
+
+---
+
+### 🤖 AI Agents
+
+![AI Agents](screenshots/07-ai-agents.png)
+
 ### Dashboard
 
 The main dashboard provides an overview of traffic, energy, pollution, alerts, and available AI modules.
@@ -526,3 +570,4 @@ Consider starring the repository and exploring the live demo.
 **Live Demo:** https://smart-city-intelligence-platform.streamlit.app/
 
 **API Docs:** https://smart-city-ai-1la1.onrender.com/docs
+=======
