@@ -64,6 +64,42 @@ sidebar()
 
 
 # =========================================================
+# MOBILE / QUICK NAVIGATION
+# =========================================================
+
+pages = [
+    "Dashboard",
+    "Traffic Intelligence",
+    "Energy Analytics",
+    "Environmental Monitoring",
+    "Emergency Detection",
+    "Waste Management",
+    "Citizen Services",
+    "Knowledge Base",
+    "AI Agents",
+    "Prediction History",
+]
+
+
+with st.expander("☰ Navigate", expanded=False):
+
+    selected_page = st.selectbox(
+        "Go to",
+        pages,
+        index=pages.index(
+            st.session_state.page
+        ),
+        label_visibility="collapsed",
+    )
+
+    if selected_page != st.session_state.page:
+
+        st.session_state.page = selected_page
+
+        st.rerun()
+
+
+# =========================================================
 # CURRENT PAGE
 # =========================================================
 
