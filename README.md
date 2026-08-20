@@ -240,6 +240,7 @@ Available agents:
 
 ### NLP / Generative AI
 - Groq
+- Groq Model: openai/gpt-oss-20b
 - LangChain
 - LangChain-Groq
 - Hugging Face
@@ -381,7 +382,8 @@ Create a `.env` file with the required API keys.
 From the project root:
 
 ```powershell
-uvicorn backend.app.main:app --reload --port 8000
+cd backend
+uvicorn app.main:app --reload
 ```
 
 ### 6. Start Streamlit
@@ -423,10 +425,7 @@ https://smart-city-intelligence-platform.streamlit.app/
 ```
 
 The frontend uses an environment-based backend URL so local development and production deployment can use different backend endpoints without changing application logic.
-
----
-
-## 📸 Application Screenshots
+----------
 
 
 ## 📸 Application Screenshots
