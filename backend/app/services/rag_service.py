@@ -284,7 +284,7 @@ def ask_question(
 
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-20b",
         temperature=0,
         max_tokens=500
     )

@@ -1,8 +1,9 @@
 import streamlit as st
 import requests
+from config import BACKEND_URL
 
-API_URL = "https://smart-city-ai-1la1.onrender.com/agents/chat"
-
+API_URL = f"{BACKEND_URL}/agents/chat"
+st.write("DEBUG API URL:", API_URL)
 
 def agents_page():
 
